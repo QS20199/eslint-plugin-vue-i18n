@@ -105,7 +105,7 @@
     "url": "git+https://github.com/intlify/eslint-plugin-vue-i18n.git"
   },
   "scripts": {
-    "build": "tsc --project ./tsconfig.build.json",
+    "build": "tsc --project ./tsconfig.build.json -w",
     "clean": "rimraf .nyc_output coverage dist docs/.vuepress/dist",
     "coverage": "nyc report --reporter lcov && opener coverage/lcov-report/index.html",
     "docs": "npm run build && node --openssl-legacy-provider node_modules/vuepress/cli.js dev docs",
@@ -117,7 +117,8 @@
     "format": "prettier . --write",
     "release:prepare": "shipjs prepare",
     "release:trigger": "shipjs trigger",
-    "test": "mocha --require ts-node/register \"./tests/**/*.ts\"",
+    "test": "mocha --require ts-node/register \"./tests/lib/rules/no-raw-text.ts\"",
+    "test-qs": "mocha --require ts-node/register \"./tests/lib/rules/no-raw-text-qs.ts\"",
     "test:debug": "mocha --require ts-node/register/transpile-only \"./tests/**/*.ts\"",
     "test:coverage": "nyc mocha --require ts-node/register \"./tests/**/*.ts\" --timeout 60000",
     "test:integrations": "mocha ./tests-integrations/*.js --timeout 60000",

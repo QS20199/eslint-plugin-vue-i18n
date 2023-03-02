@@ -5,6 +5,7 @@ import { parse, AST as VAST } from 'vue-eslint-parser'
 import type { AST as JSONAST } from 'jsonc-eslint-parser'
 import { parseJSON, getStaticJSONValue } from 'jsonc-eslint-parser'
 import type { StaticLiteral } from '../utils/index'
+import { isTemplateLiteral } from '../utils/index'
 import {
   getStaticLiteralValue,
   isStaticLiteral,
@@ -76,7 +77,13 @@ function getTargetAttrs(tagName: string, config: Config): Set<string> {
 }
 
 function calculateRange(
-  node: StaticLiteral | VAST.VText | JSXText | VAST.VLiteral | VAST.VIdentifier,
+  node:
+    | StaticLiteral
+    | VAST.VText
+    | JSXText
+    | VAST.VLiteral
+    | VAST.VIdentifier
+    | VAST.VDirectiveKey,
   base: TemplateOptionValueNode | null
 ): Range {
   const range = node.range
@@ -109,7 +116,7 @@ function testValue(value: LiteralValue, config: Config): boolean {
       config.ignoreText.includes(value.trim())
     )
   } else {
-    return false
+    return true
   }
 }
 
@@ -140,6 +147,17 @@ function checkVAttributeDirective(
         baseNode,
         scope
       )
+    }
+
+    if (
+      node.expression &&
+      attrNode.key.name.name === 'bind' &&
+      attrNode.key.argument?.type === 'VIdentifier' &&
+      getTargetAttrs(attrNode.parent.parent.rawName, config).has(
+        attrNode.key.argument.name
+      )
+    ) {
+      checkVAttribute(context, attrNode, config, baseNode, scope)
     }
   }
 }
@@ -262,88 +280,114 @@ function checkLiteral(
   }
 }
 
+// check attribute like <p label="xx"></p> or <p :label="'xx' + var1"></p>
 function checkVAttribute(
   context: RuleContext,
-  attribute: VAST.VAttribute,
+  attribute: VAST.VAttribute | VAST.VDirective,
   config: Config,
   baseNode: TemplateOptionValueNode | null,
   scope: NodeScope
 ) {
-  if (!attribute.value) {
-    return
-  }
-  const literal = attribute.value
-  const value = literal.value
-
-  if (testValue(value, config)) {
-    return
-  }
-
-  const loc = calculateLoc(literal, baseNode, context)
-  context.report({
-    loc,
-    message: `raw text '${value}' is used`,
-    suggest: buildSuggest()
-  })
-
-  function buildSuggest(): SuggestionReportDescriptor[] | null {
-    if (scope === 'template-option') {
-      if (!withoutEscape(context, baseNode)) {
-        return null
-      }
-    } else if (scope !== 'template') {
-      return null
-    }
-    const literalRange = calculateRange(literal, baseNode)
-    const replaceRange = [literalRange[0] + 1, literalRange[1] - 1] as Range
-    const keyRange = calculateRange(attribute.key, baseNode)
-    const sourceCode = context.getSourceCode()
-    const attrQuote = sourceCode.text[literalRange[0]]
-    const quotes: Quotes = new Set(attrQuote as never)
-    if (baseNode) {
-      const baseQuote = sourceCode.text[baseNode.range[0]]
-      quotes.add(baseQuote as never)
-    }
-
-    const suggest: SuggestionReportDescriptor[] = []
-
-    for (const key of extractMessageKeys(context, `${value}`)) {
-      const quote = getFixQuote(quotes, key)
-      if (quote) {
-        suggest.push({
-          desc: `Replace to "$t('${key}')".`,
-          fix(fixer) {
-            return [
-              fixer.insertTextBeforeRange(keyRange, ':'),
-              fixer.replaceTextRange(replaceRange, `$t(${quote}${key}${quote})`)
-            ]
-          }
-        })
-      }
-    }
-    const i18nBlocks = getFixableI18nBlocks(context, `${value}`)
-    const quote = getFixQuote(quotes, sourceCode.text.slice(...replaceRange))
-    if (i18nBlocks && quote) {
-      suggest.push({
-        desc: "Add the resource to the '<i18n>' block.",
-        fix(fixer) {
-          return generateFixAddI18nBlock(
-            context,
-            fixer,
-            i18nBlocks,
-            `${value}`,
-            [
-              fixer.insertTextBeforeRange(keyRange, ':'),
-              fixer.insertTextBeforeRange(replaceRange, `$t(${quote}`),
-              fixer.insertTextAfterRange(replaceRange, `${quote})`)
-            ]
-          )
+  VAST.traverseNodes(attribute, {
+    enterNode(node) {
+      if (isStaticLiteral(node) || isTemplateLiteral(node)) {
+        const literal = node
+        // check if it's $t call
+        if (
+          literal.parent?.type === 'CallExpression' &&
+          literal.parent.callee.type === 'Identifier' &&
+          literal.parent.callee.name === '$t'
+        ) {
+          return
         }
-      })
-    }
 
-    return suggest
-  }
+        const value = isStaticLiteral(literal)
+          ? getStaticLiteralValue(literal)
+          : getTemplateLiteralValueAndInterpolation(context, literal).value
+        if (testValue(value, config)) {
+          return
+        }
+
+        const loc = calculateLoc(literal, baseNode, context)
+        context.report({
+          loc,
+          message: `raw text '${value}' is used`,
+          suggest: buildSuggest()
+        })
+
+        // eslint-disable-next-line no-inner-declarations
+        function buildSuggest(): SuggestionReportDescriptor[] | null {
+          if (scope === 'template-option') {
+            if (!withoutEscape(context, baseNode)) {
+              return null
+            }
+          } else if (scope !== 'template') {
+            return null
+          }
+          const literalRange = calculateRange(literal, baseNode)
+          const contentRange = [
+            literalRange[0] + 1,
+            literalRange[1] - 1
+          ] as Range
+          const keyRange = calculateRange(attribute.key, baseNode)
+          const sourceCode = context.getSourceCode()
+          const attrQuote = sourceCode.text[literalRange[0]]
+          const quotes: Quotes = new Set(attrQuote as never)
+          if (baseNode) {
+            const baseQuote = sourceCode.text[baseNode.range[0]]
+            quotes.add(baseQuote as never)
+          }
+
+          const suggest: SuggestionReportDescriptor[] = []
+
+          const key = `${value}`.trim()
+          if (attribute.directive) {
+            suggest.push({
+              desc: `Replace to $t(\`${key}\`).`,
+              fix(fixer) {
+                if (isStaticLiteral(literal)) {
+                  return [
+                    fixer.replaceTextRange(literalRange, `$t(\`${key}\`)`)
+                  ]
+                } else {
+                  // templateLiteral
+                  const { interpolation } =
+                    getTemplateLiteralValueAndInterpolation(context, literal)
+                  return [
+                    fixer.replaceTextRange(
+                      literalRange,
+                      `$t(\`${key}\`, ${interpolation})`
+                    )
+                  ]
+                }
+              }
+            })
+          } else {
+            const quote = getFixQuote(quotes, key)
+            if (quote) {
+              suggest.push({
+                desc: `Replace to "$t('${key}')".`,
+                fix(fixer) {
+                  return [
+                    fixer.insertTextBeforeRange(keyRange, ':'),
+                    fixer.replaceTextRange(
+                      contentRange,
+                      `$t(${quote}${key}${quote})`
+                    )
+                  ]
+                }
+              })
+            }
+          }
+
+          return suggest
+        }
+      }
+    },
+    leaveNode() {
+      // noop
+    }
+  })
 }
 
 function checkText(
@@ -485,6 +529,10 @@ type I18nBlockInfo = {
   objects: JSONAST.JSONObjectExpression[]
 }
 
+// 分析总结:
+// 有i18n块, 有相同value, 返回null
+// 有i18n块, 无相同value, 返回[{...}]
+// 没有i18n块, 返回[]
 function getFixableI18nBlocks(
   context: RuleContext,
   newKey: string
@@ -692,6 +740,42 @@ function parseTargetAttrs(
     })
   }
   return regexps
+}
+
+/**
+ * `测试${var1}测试` -> $t(`测试%{attr0}测试`, {attr0: var1})
+ */
+function getTemplateLiteralValueAndInterpolation(
+  context: RuleContext,
+  node: VAST.ESLintTemplateLiteral
+): {
+  value: VAST.ESLintLiteral['value']
+  interpolation: string
+} {
+  const items = [...node.expressions, ...node.quasis].sort(
+    (n1, n2) => n1.range[0] - n2.range[0]
+  )
+  let idx = 0
+  const interpolation: string[] = []
+  const value = items
+    .map(item => {
+      if (item.type === 'TemplateElement') {
+        return item.value.raw
+      } else {
+        idx++
+        const key = `attr${idx}`
+        interpolation.push(
+          `${key}: \`${context.getSourceCode().getText(item)}\``
+        )
+        return `%{${key}}`
+      }
+    })
+    .join('')
+
+  return {
+    value,
+    interpolation: `{ ${interpolation.join(', ')} }`
+  }
 }
 
 function create(context: RuleContext): RuleListener {

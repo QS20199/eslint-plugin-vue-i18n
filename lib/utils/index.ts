@@ -112,6 +112,7 @@ export function isStaticLiteral(node: VAST.Node | null): node is StaticLiteral {
   return Boolean(
     node &&
       (node.type === 'Literal' ||
+        node.type === 'VLiteral' ||
         (node.type === 'TemplateLiteral' && node.expressions.length === 0))
   )
 }
@@ -121,6 +122,12 @@ export function getStaticLiteralValue(
   return node.type !== 'TemplateLiteral'
     ? node.value
     : node.quasis[0].value.cooked || node.quasis[0].value.raw
+}
+
+export function isTemplateLiteral(
+  node: VAST.Node | null
+): node is VAST.ESLintTemplateLiteral {
+  return Boolean(node && node.type === 'TemplateLiteral')
 }
 
 function loadLocaleMessages(
