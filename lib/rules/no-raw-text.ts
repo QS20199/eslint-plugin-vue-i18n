@@ -312,7 +312,58 @@ function checkVAttribute(
         context.report({
           loc,
           message: `raw text '${value}' is used`,
-          suggest: buildSuggest()
+          fix: fixer => {
+            if (scope === 'template-option') {
+              if (!withoutEscape(context, baseNode)) {
+                return null
+              }
+            } else if (scope !== 'template') {
+              return null
+            }
+            const literalRange = calculateRange(literal, baseNode)
+            const contentRange = [
+              literalRange[0] + 1,
+              literalRange[1] - 1
+            ] as Range
+            const keyRange = calculateRange(attribute.key, baseNode)
+            const sourceCode = context.getSourceCode()
+            const attrQuote = sourceCode.text[literalRange[0]]
+            const quotes: Quotes = new Set(attrQuote as never)
+            if (baseNode) {
+              const baseQuote = sourceCode.text[baseNode.range[0]]
+              quotes.add(baseQuote as never)
+            }
+
+            const key = `${value}`.trim()
+            if (attribute.directive) {
+              if (isStaticLiteral(literal)) {
+                return [fixer.replaceTextRange(literalRange, `$t(\`${key}\`)`)]
+              } else {
+                // templateLiteral
+                const { interpolation } =
+                  getTemplateLiteralValueAndInterpolation(context, literal)
+                return [
+                  fixer.replaceTextRange(
+                    literalRange,
+                    `$t(\`${key}\`, ${interpolation})`
+                  )
+                ]
+              }
+            } else {
+              const quote = getFixQuote(quotes, key)
+              if (quote) {
+                return [
+                  fixer.insertTextBeforeRange(keyRange, ':'),
+                  fixer.replaceTextRange(
+                    contentRange,
+                    `$t(${quote}${key}${quote})`
+                  )
+                ]
+              }
+            }
+
+            return null
+          }
         })
 
         // eslint-disable-next-line no-inner-declarations
@@ -894,7 +945,7 @@ export = createRule({
       url: 'https://eslint-plugin-vue-i18n.intlify.dev/rules/no-raw-text.html',
       recommended: true
     },
-    fixable: null,
+    fixable: 'code',
     hasSuggestions: true,
     schema: [
       {
