@@ -83,7 +83,8 @@ function calculateRange(
     | JSXText
     | VAST.VLiteral
     | VAST.VIdentifier
-    | VAST.VDirectiveKey,
+    | VAST.VDirectiveKey
+    | VAST.VElement,
   base: TemplateOptionValueNode | null
 ): Range {
   const range = node.range
@@ -94,7 +95,7 @@ function calculateRange(
   return [offset + range[0], offset + range[1]]
 }
 function calculateLoc(
-  node: StaticLiteral | VAST.VText | JSXText | VAST.VLiteral,
+  node: StaticLiteral | VAST.VText | JSXText | VAST.VLiteral | VAST.VElement,
   base: TemplateOptionValueNode | null,
   context: RuleContext
 ) {
@@ -111,6 +112,7 @@ function calculateLoc(
 function testValue(value: LiteralValue, config: Config): boolean {
   if (typeof value === 'string') {
     return (
+      value === '' ||
       hasOnlyWhitespace(value) ||
       config.ignorePattern.test(value.trim()) ||
       config.ignoreText.includes(value.trim())
@@ -208,11 +210,11 @@ function checkExpressionContainerText(
   if (isStaticLiteral(expression)) {
     checkLiteral(context, expression, config, baseNode, scope)
   } else if (expression.type === 'ConditionalExpression') {
+    // handle `bool ? 'xxx1' : 'xxx2'`
+    // or: `bool1 ? 'xxx1' : bool2 ? 'xxx2' : 'xxx3'`
     const targets = [expression.consequent, expression.alternate]
     targets.forEach(target => {
-      if (isStaticLiteral(target)) {
-        checkLiteral(context, target, config, baseNode, scope)
-      }
+      checkExpressionContainerText(context, target, config, baseNode, scope)
     })
   }
 }
@@ -229,55 +231,25 @@ function checkLiteral(
   if (testValue(value, config)) {
     return
   }
+  const valueStr = String(value).trim()
 
   const loc = calculateLoc(literal, baseNode, context)
   context.report({
     loc,
-    message: `raw text '${value}' is used`,
-    suggest: buildSuggest()
-  })
-
-  function buildSuggest(): SuggestionReportDescriptor[] | null {
-    if (scope === 'template-option') {
-      if (!withoutEscape(context, baseNode)) {
+    message: `raw text '${valueStr}' is used`,
+    fix: fixer => {
+      if (scope === 'template-option') {
+        if (!withoutEscape(context, baseNode)) {
+          return null
+        }
+      } else if (scope !== 'template') {
         return null
       }
-    } else if (scope !== 'template') {
-      return null
-    }
-    const replaceRange = calculateRange(literal, baseNode)
+      const replaceRange = calculateRange(literal, baseNode)
 
-    const suggest: SuggestionReportDescriptor[] = []
-
-    for (const key of extractMessageKeys(context, `${value}`)) {
-      suggest.push({
-        desc: `Replace to "$t('${key}')".`,
-        fix(fixer) {
-          return fixer.replaceTextRange(replaceRange, `$t('${key}')`)
-        }
-      })
+      return fixer.replaceTextRange(replaceRange, `$t('${valueStr}')`)
     }
-    const i18nBlocks = getFixableI18nBlocks(context, `${value}`)
-    if (i18nBlocks) {
-      suggest.push({
-        desc: "Add the resource to the '<i18n>' block.",
-        fix(fixer) {
-          return generateFixAddI18nBlock(
-            context,
-            fixer,
-            i18nBlocks,
-            `${value}`,
-            [
-              fixer.insertTextBeforeRange(replaceRange, '$t('),
-              fixer.insertTextAfterRange(replaceRange, ')')
-            ]
-          )
-        }
-      })
-    }
-
-    return suggest
-  }
+  })
 }
 
 // check attribute like <p label="xx"></p> or <p :label="'xx' + var1"></p>
@@ -307,11 +279,12 @@ function checkVAttribute(
         if (testValue(value, config)) {
           return
         }
+        const valueStr = String(value).trim()
 
         const loc = calculateLoc(literal, baseNode, context)
         context.report({
           loc,
-          message: `raw text '${value}' is used`,
+          message: `raw text '${valueStr}' is used`,
           fix: fixer => {
             if (scope === 'template-option') {
               if (!withoutEscape(context, baseNode)) {
@@ -326,18 +299,12 @@ function checkVAttribute(
               literalRange[1] - 1
             ] as Range
             const keyRange = calculateRange(attribute.key, baseNode)
-            const sourceCode = context.getSourceCode()
-            const attrQuote = sourceCode.text[literalRange[0]]
-            const quotes: Quotes = new Set(attrQuote as never)
-            if (baseNode) {
-              const baseQuote = sourceCode.text[baseNode.range[0]]
-              quotes.add(baseQuote as never)
-            }
 
-            const key = `${value}`.trim()
             if (attribute.directive) {
               if (isStaticLiteral(literal)) {
-                return [fixer.replaceTextRange(literalRange, `$t(\`${key}\`)`)]
+                return [
+                  fixer.replaceTextRange(literalRange, `$t(\`${valueStr}\`)`)
+                ]
               } else {
                 // templateLiteral
                 const { interpolation } =
@@ -345,94 +312,18 @@ function checkVAttribute(
                 return [
                   fixer.replaceTextRange(
                     literalRange,
-                    `$t(\`${key}\`, ${interpolation})`
+                    `$t(\`${valueStr}\`, ${interpolation})`
                   )
                 ]
               }
             } else {
-              const quote = getFixQuote(quotes, key)
-              if (quote) {
-                return [
-                  fixer.insertTextBeforeRange(keyRange, ':'),
-                  fixer.replaceTextRange(
-                    contentRange,
-                    `$t(${quote}${key}${quote})`
-                  )
-                ]
-              }
+              return [
+                fixer.insertTextBeforeRange(keyRange, ':'),
+                fixer.replaceTextRange(contentRange, `$t(\`${valueStr}\`)`)
+              ]
             }
-
-            return null
           }
         })
-
-        // eslint-disable-next-line no-inner-declarations
-        function buildSuggest(): SuggestionReportDescriptor[] | null {
-          if (scope === 'template-option') {
-            if (!withoutEscape(context, baseNode)) {
-              return null
-            }
-          } else if (scope !== 'template') {
-            return null
-          }
-          const literalRange = calculateRange(literal, baseNode)
-          const contentRange = [
-            literalRange[0] + 1,
-            literalRange[1] - 1
-          ] as Range
-          const keyRange = calculateRange(attribute.key, baseNode)
-          const sourceCode = context.getSourceCode()
-          const attrQuote = sourceCode.text[literalRange[0]]
-          const quotes: Quotes = new Set(attrQuote as never)
-          if (baseNode) {
-            const baseQuote = sourceCode.text[baseNode.range[0]]
-            quotes.add(baseQuote as never)
-          }
-
-          const suggest: SuggestionReportDescriptor[] = []
-
-          const key = `${value}`.trim()
-          if (attribute.directive) {
-            suggest.push({
-              desc: `Replace to $t(\`${key}\`).`,
-              fix(fixer) {
-                if (isStaticLiteral(literal)) {
-                  return [
-                    fixer.replaceTextRange(literalRange, `$t(\`${key}\`)`)
-                  ]
-                } else {
-                  // templateLiteral
-                  const { interpolation } =
-                    getTemplateLiteralValueAndInterpolation(context, literal)
-                  return [
-                    fixer.replaceTextRange(
-                      literalRange,
-                      `$t(\`${key}\`, ${interpolation})`
-                    )
-                  ]
-                }
-              }
-            })
-          } else {
-            const quote = getFixQuote(quotes, key)
-            if (quote) {
-              suggest.push({
-                desc: `Replace to "$t('${key}')".`,
-                fix(fixer) {
-                  return [
-                    fixer.insertTextBeforeRange(keyRange, ':'),
-                    fixer.replaceTextRange(
-                      contentRange,
-                      `$t(${quote}${key}${quote})`
-                    )
-                  ]
-                }
-              })
-            }
-          }
-
-          return suggest
-        }
       }
     },
     leaveNode() {
@@ -448,7 +339,7 @@ function checkText(
   baseNode: TemplateOptionValueNode | null,
   scope: NodeScope
 ) {
-  const value = textNode.value
+  const value = textNode.value.trim()
   if (testValue(value, config)) {
     return
   }
@@ -457,62 +348,105 @@ function checkText(
   context.report({
     loc,
     message: `raw text '${value}' is used`,
-    suggest: buildSuggest()
-  })
-
-  function buildSuggest(): SuggestionReportDescriptor[] | null {
-    if (scope === 'template-option') {
-      if (!withoutEscape(context, baseNode)) {
-        return null
-      }
-    }
-    const replaceRange = calculateRange(textNode, baseNode)
-    const sourceCode = context.getSourceCode()
-    const quotes: Quotes = new Set()
-    if (baseNode) {
-      const baseQuote = sourceCode.text[baseNode.range[0]]
-      quotes.add(baseQuote as never)
-    }
-
-    const suggest: SuggestionReportDescriptor[] = []
-
-    for (const key of extractMessageKeys(context, value)) {
-      const quote = getFixQuote(quotes, key)
-      if (quote) {
-        const before = `${scope === 'jsx' ? '{' : '{{'}$t(${quote}`
-        const after = `${quote})${scope === 'jsx' ? '}' : '}}'}`
-        suggest.push({
-          desc: `Replace to "${before}${key}${after}".`,
-          fix(fixer) {
-            return fixer.replaceTextRange(replaceRange, before + key + after)
-          }
-        })
-      }
-    }
-    const i18nBlocks = getFixableI18nBlocks(context, `${value}`)
-    const quote = getFixQuote(quotes, sourceCode.text.slice(...replaceRange))
-    if (i18nBlocks && quote) {
-      const before = `${scope === 'jsx' ? '{' : '{{'}$t(${quote}`
-      const after = `${quote})${scope === 'jsx' ? '}' : '}}'}`
-      suggest.push({
-        desc: "Add the resource to the '<i18n>' block.",
-        fix(fixer) {
-          return generateFixAddI18nBlock(
-            context,
-            fixer,
-            i18nBlocks,
-            `${value}`,
-            [
-              fixer.insertTextBeforeRange(replaceRange, before),
-              fixer.insertTextAfterRange(replaceRange, after)
-            ]
-          )
+    fix: fixer => {
+      if (scope === 'template-option') {
+        if (!withoutEscape(context, baseNode)) {
+          return null
         }
-      })
-    }
+      }
+      const replaceRange = calculateRange(textNode, baseNode)
 
-    return suggest
+      const before = `${scope === 'jsx' ? '{' : '{{'} $t(\``
+      const after = `\`) ${scope === 'jsx' ? '}' : '}}'}`
+      return fixer.replaceTextRange(replaceRange, before + value + after)
+    }
+  })
+}
+
+function checkComplicatedTextElement(
+  context: RuleContext,
+  node: VAST.VElement,
+  config: Config,
+  baseNode: TemplateOptionValueNode | null,
+  scope: NodeScope
+) {
+  if (
+    node.children.some(
+      v => v.type === 'VText' && !testValue(v.value, config)
+    ) === false
+  ) {
+    return
   }
+
+  let compIdx = 0
+  let attrIdx = 0
+  const interpolation: string[] = []
+  const nodeDesc = node.children
+    .map((subNode, nodeIdx) => {
+      if (subNode.type === 'VText') {
+        let nodeValue = subNode.value
+        // 模拟html空格类字符表现: 多于1个字符的空格, 始终表现为1个空格, 首尾除外
+        if (nodeIdx === 0) {
+          nodeValue = nodeValue.replace(/^\s*/, '')
+        } else {
+          nodeValue = nodeValue.replace(/^\s{2,}/, ' ')
+        }
+        if (nodeIdx === node.children.length - 1) {
+          nodeValue = nodeValue.replace(/\s*$/, '')
+        } else {
+          nodeValue = nodeValue.replace(/\s{2,}$/, ' ')
+        }
+        return nodeValue
+      }
+      if (subNode.type === 'VElement') {
+        return `{${compIdx++}}`
+      }
+      if (subNode.type === 'VExpressionContainer' && subNode.expression) {
+        const key = `attr${attrIdx++}`
+        interpolation.push(
+          `${key}: ${context.getSourceCode().getText(subNode.expression)}`
+        )
+        return `%{${key}}`
+      }
+    })
+    .join('')
+
+  const subNodesRange: Range = [
+    node.children[0].range[0],
+    node.children[node.children.length - 1].range[1]
+  ]
+  const subNodesLoc: VAST.LocationRange = {
+    start: context.getSourceCode().getLocFromIndex(subNodesRange[0]),
+    end: context.getSourceCode().getLocFromIndex(subNodesRange[1])
+  }
+
+  context.report({
+    loc: compIdx > 0 ? node.loc : subNodesLoc,
+    message: `raw text '${nodeDesc}' is used`,
+    fix: fixer => {
+      if (scope === 'template-option') {
+        if (!withoutEscape(context, baseNode)) {
+          return null
+        }
+      }
+      if (compIdx > 0 && attrIdx === 0) {
+        const result = [
+          `<i18n path="${nodeDesc}" tag="${node.name}">`,
+          ...node.children
+            .filter(subNode => subNode.type === 'VElement')
+            .map(subNode => context.getSourceCode().getText(subNode)),
+          `</i18n>`
+        ].join('')
+        return fixer.replaceTextRange(node.range, result)
+      } else if (attrIdx > 0 && compIdx === 0) {
+        const interpolationStr = `{ ${interpolation.join(', ')} }`
+        const result = `{{ $t(\`${nodeDesc}\`, ${interpolationStr}) }}`
+        return fixer.replaceTextRange(subNodesRange, result)
+      } else {
+        return null // vue-i18n 不支持同时有文本插值和组件插值的场景
+      }
+    }
+  })
 }
 
 function findVariable(variables: Variable[], name: string) {
@@ -813,11 +747,8 @@ function getTemplateLiteralValueAndInterpolation(
       if (item.type === 'TemplateElement') {
         return item.value.raw
       } else {
-        idx++
-        const key = `attr${idx}`
-        interpolation.push(
-          `${key}: \`${context.getSourceCode().getText(item)}\``
-        )
+        const key = `attr${idx++}`
+        interpolation.push(`${key}: ${context.getSourceCode().getText(item)}`)
         return `%{${key}}`
       }
     })
@@ -881,16 +812,30 @@ function create(context: RuleContext): RuleListener {
       checkVAttribute(context, node, config, baseNode, scope)
     },
 
-    VText(
-      node: VAST.VText,
+    VElement(
+      node: VAST.VElement,
       baseNode: TemplateOptionValueNode | null = null,
       scope: NodeScope = 'template'
     ) {
-      if (config.ignoreNodes.includes((node.parent as VAST.VElement).name)) {
-        return
+      if (!node.children.length) return
+
+      // handle pure text element
+      // e.g <div>text</div>
+      if (node.children.length === 1 && node.children[0].type === 'VText') {
+        if (config.ignoreNodes.includes(node.name)) {
+          return
+        }
+        checkText(context, node.children[0], config, baseNode, scope)
       }
 
-      checkText(context, node, config, baseNode, scope)
+      // handle text element with other element
+      // e.g <div>text<span>text2</span></div>
+      if (
+        node.children.length > 1 &&
+        node.children.some(v => v.type === 'VText')
+      ) {
+        checkComplicatedTextElement(context, node, config, baseNode, scope)
+      }
     }
   }
 
