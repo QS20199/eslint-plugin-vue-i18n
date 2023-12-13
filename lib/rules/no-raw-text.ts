@@ -400,7 +400,11 @@ function checkComplicatedTextElement(
       if (subNode.type === 'VElement' || subNode.type === 'JSXElement') {
         return `{${compIdx++}}`
       }
-      if (subNode.type === 'VExpressionContainer' && subNode.expression) {
+      if (
+        (subNode.type === 'VExpressionContainer' ||
+          subNode.type === 'JSXExpressionContainer') &&
+        subNode.expression
+      ) {
         const key = `attr${attrIdx++}`
         interpolation.push(
           `${key}: ${context.getSourceCode().getText(subNode.expression)}`
@@ -444,7 +448,9 @@ function checkComplicatedTextElement(
         return fixer.replaceTextRange(node.range, result)
       } else if (attrIdx > 0 && compIdx === 0) {
         const interpolationStr = `{ ${interpolation.join(', ')} }`
-        const result = `{{ $t(\`${nodeDesc}\`, ${interpolationStr}) }}`
+        const before = scope === 'jsx' ? '{' : '{{'
+        const after = scope === 'jsx' ? '}' : '}}'
+        const result = `${before} $t(\`${nodeDesc}\`, ${interpolationStr}) ${after}`
         return fixer.replaceTextRange(subNodesRange, result)
       } else {
         return null // vue-i18n 不支持同时有文本插值和组件插值的场景

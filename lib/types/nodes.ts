@@ -7,11 +7,17 @@ export interface JSXText extends MaybeNode {
   parent: MaybeNode
 }
 
+export interface JSXExpressionContainer extends MaybeNode {
+  type: 'JSXExpressionContainer'
+  expression: MaybeNode
+  parent: MaybeNode
+}
+
 export interface JSXElement extends MaybeNode {
   type: 'JSXElement'
   value: string
   parent: MaybeNode
-  children: (JSXText | JSXElement)[]
+  children: (JSXText | JSXElement | JSXExpressionContainer)[]
   openingElement: {
     name: {
       name: string

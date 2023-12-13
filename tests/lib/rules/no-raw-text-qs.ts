@@ -183,6 +183,16 @@ tester.run('no-raw-text-qs', rule as never, {
       output: `<template><div>{{ true ? $t('测试1') : true ? $t('测试2') : $t('测试3') }}</div></template>`
     },
     {
+      code: `<template><div>测试1{{ var1 }}测试2</div></template>`,
+      errors: [
+        {
+          message: `raw text '测试1%{attr0}测试2' is used`,
+          line: 1
+        }
+      ],
+      output: `<template><div>{{ $t(\`测试1%{attr0}测试2\`, { attr0: var1 }) }}</div></template>`
+    },
+    {
       code: `<template><div>
               文本1
               <div>文本2</div>
@@ -242,7 +252,6 @@ tester.run('no-raw-text-qs', rule as never, {
       output: `<script>$tips({ content: <div>{ $t(\`测试\`) }</div> })</script>`
     },
     {
-      only: true,
       code: `<script>$tips({ content: <div>
           文本1
           <div>文本2</div>
@@ -261,6 +270,16 @@ tester.run('no-raw-text-qs', rule as never, {
         }
       ],
       output: `<script>$tips({ content: <i18n path="文本1 {0} {1} 文本4" tag="div"><div>文本2</div><div>文本3</div></i18n> })</script>`
+    },
+    {
+      code: `<script>$tips({ content: <div>测试1{var1}测试2</div> })</script>`,
+      errors: [
+        {
+          message: `raw text '测试1%{attr0}测试2' is used`,
+          line: 1
+        }
+      ],
+      output: `<script>$tips({ content: <div>{ $t(\`测试1%{attr0}测试2\`, { attr0: var1 }) }</div> })</script>`
     }
   ]
 })
