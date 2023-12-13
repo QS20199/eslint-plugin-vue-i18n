@@ -215,7 +215,52 @@ tester.run('no-raw-text-qs', rule as never, {
           message: `raw text '文本3' is used`
         }
       ],
-      output: `<script>const a = $t('文本1');$tips($t('文本2'));$tips({ msg: $t('文本3') });</script>`
+      output: `<script>const a = $t(\`文本1\`);$tips($t(\`文本2\`));$tips({ msg: $t(\`文本3\`) });</script>`
+    },
+    {
+      code: `<script>const a = \`文本1\${var1}\`;$tips(\`文本2\${var1}\`);$tips({ msg: \`文本3\${var1}\` });</script>`,
+      errors: [
+        {
+          message: `raw text '文本1%{attr0}' is used`
+        },
+        {
+          message: `raw text '文本2%{attr0}' is used`
+        },
+        {
+          message: `raw text '文本3%{attr0}' is used`
+        }
+      ],
+      output: `<script>const a = $t(\`文本1%{attr0}\`, { attr0: var1 });$tips($t(\`文本2%{attr0}\`, { attr0: var1 }));$tips({ msg: $t(\`文本3%{attr0}\`, { attr0: var1 }) });</script>`
+    },
+    {
+      code: `<script>$tips({ content: <div>测试</div> })</script>`,
+      errors: [
+        {
+          message: `raw text '测试' is used`
+        }
+      ],
+      output: `<script>$tips({ content: <div>{ $t(\`测试\`) }</div> })</script>`
+    },
+    {
+      only: true,
+      code: `<script>$tips({ content: <div>
+          文本1
+          <div>文本2</div>
+          <div>文本3</div>
+          文本4
+        </div> })</script>`,
+      errors: [
+        {
+          message: `raw text '文本1 {0} {1} 文本4' is used`
+        },
+        {
+          message: `raw text '文本2' is used`
+        },
+        {
+          message: `raw text '文本3' is used`
+        }
+      ],
+      output: `<script>$tips({ content: <i18n path="文本1 {0} {1} 文本4" tag="div"><div>文本2</div><div>文本3</div></i18n> })</script>`
     }
   ]
 })

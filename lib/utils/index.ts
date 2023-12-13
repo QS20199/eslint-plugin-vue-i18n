@@ -676,3 +676,15 @@ function getComponentComments(context: RuleContext) {
   componentComments.set(context, tokens)
   return tokens
 }
+
+export function isParent$tCall(node: VAST.Node) {
+  if (
+    node.parent?.type === 'CallExpression' &&
+    node.parent.callee.type === 'Identifier' &&
+    node.parent.callee.name === '$t'
+  ) {
+    return true
+  } else {
+    return false
+  }
+}

@@ -5,7 +5,7 @@ import { parse, AST as VAST } from 'vue-eslint-parser'
 import type { AST as JSONAST } from 'jsonc-eslint-parser'
 import { parseJSON, getStaticJSONValue } from 'jsonc-eslint-parser'
 import type { StaticLiteral } from '../utils/index'
-import { isTemplateLiteral } from '../utils/index'
+import { isParent$tCall, isTemplateLiteral } from '../utils/index'
 import {
   getStaticLiteralValue,
   isStaticLiteral,
@@ -25,7 +25,8 @@ import type {
   SuggestionReportDescriptor,
   Fix,
   I18nLocaleMessageDictionary,
-  Range
+  Range,
+  JSXElement
 } from '../types'
 import { isKebabCase, pascalCase } from '../utils/casing'
 import { createRule } from '../utils/rule'
@@ -265,11 +266,7 @@ function checkVAttribute(
       if (isStaticLiteral(node) || isTemplateLiteral(node)) {
         const literal = node
         // check if it's $t call
-        if (
-          literal.parent?.type === 'CallExpression' &&
-          literal.parent.callee.type === 'Identifier' &&
-          literal.parent.callee.name === '$t'
-        ) {
+        if (isParent$tCall(literal)) {
           return
         }
 
@@ -365,14 +362,16 @@ function checkText(
 
 function checkComplicatedTextElement(
   context: RuleContext,
-  node: VAST.VElement,
+  node: VAST.VElement | JSXElement,
   config: Config,
   baseNode: TemplateOptionValueNode | null,
   scope: NodeScope
 ) {
   if (
     node.children.some(
-      v => v.type === 'VText' && !testValue(v.value, config)
+      v =>
+        (v.type === 'JSXText' || v.type === 'VText') &&
+        !testValue(v.value, config)
     ) === false
   ) {
     return
@@ -383,7 +382,7 @@ function checkComplicatedTextElement(
   const interpolation: string[] = []
   const nodeDesc = node.children
     .map((subNode, nodeIdx) => {
-      if (subNode.type === 'VText') {
+      if (subNode.type === 'JSXText' || subNode.type === 'VText') {
         let nodeValue = subNode.value
         // 模拟html空格类字符表现: 多于1个字符的空格, 始终表现为1个空格, 首尾除外
         if (nodeIdx === 0) {
@@ -398,7 +397,7 @@ function checkComplicatedTextElement(
         }
         return nodeValue
       }
-      if (subNode.type === 'VElement') {
+      if (subNode.type === 'VElement' || subNode.type === 'JSXElement') {
         return `{${compIdx++}}`
       }
       if (subNode.type === 'VExpressionContainer' && subNode.expression) {
@@ -430,10 +429,15 @@ function checkComplicatedTextElement(
         }
       }
       if (compIdx > 0 && attrIdx === 0) {
+        const tagName =
+          node.type === 'JSXElement' ? node.openingElement.name.name : node.name
         const result = [
-          `<i18n path="${nodeDesc}" tag="${node.name}">`,
+          `<i18n path="${nodeDesc}" tag="${tagName}">`,
           ...node.children
-            .filter(subNode => subNode.type === 'VElement')
+            .filter(
+              subNode =>
+                subNode.type === 'VElement' || subNode.type === 'JSXElement'
+            )
             .map(subNode => context.getSourceCode().getText(subNode)),
           `</i18n>`
         ].join('')
@@ -841,42 +845,82 @@ function create(context: RuleContext): RuleListener {
 
   return defineTemplateBodyVisitor(context, templateVisitor, {
     // script block or scripts
-    ObjectExpression(node: VAST.ESLintObjectExpression) {
-      const valueNode = getComponentTemplateValueNode(context, node)
-      if (!valueNode) {
-        return
+    JSXElement(
+      node: JSXElement,
+      baseNode: TemplateOptionValueNode | null = null,
+      scope: NodeScope = 'jsx'
+    ) {
+      if (!node.children.length) return
+
+      // handle pure text element
+      // e.g <div>text</div>
+      if (node.children.length === 1 && node.children[0].type === 'JSXText') {
+        if (config.ignoreNodes.includes(node.openingElement.name.name)) {
+          return
+        }
+        checkText(context, node.children[0], config, baseNode, scope)
       }
+
+      // handle text element with other element
+      // e.g <div>text<span>text2</span></div>
       if (
-        getVueObjectType(context, node) == null ||
-        (valueNode.type === 'Literal' && valueNode.value == null)
+        node.children.length > 1 &&
+        node.children.some(v => v.type === 'JSXText')
       ) {
+        checkComplicatedTextElement(context, node, config, baseNode, scope)
+      }
+    },
+    Literal(node: VAST.ESLintLiteral) {
+      if (isParent$tCall(node)) {
         return
       }
 
-      const templateNode = getComponentTemplateNode(valueNode)
-      VAST.traverseNodes(templateNode, {
-        enterNode(node) {
-          const visitor:
-            | ((
-                node: VAST.Node,
-                baseNode: TemplateOptionValueNode,
-                scope: NodeScope
-              ) => void)
-            | undefined =
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            templateVisitor[node.type as never] as any
-          if (visitor) {
-            visitor(node, valueNode, 'template-option')
-          }
-        },
-        leaveNode() {
-          // noop
+      const value = getStaticLiteralValue(node)
+      if (testValue(value, config)) {
+        return
+      }
+      const valueStr = String(value).trim()
+
+      const loc = calculateLoc(node, null, context)
+      context.report({
+        loc,
+        message: `raw text '${valueStr}' is used`,
+        fix: fixer => {
+          const literalRange = calculateRange(node, null)
+          const contentRange = [literalRange[0], literalRange[1]] as Range
+          return [fixer.replaceTextRange(contentRange, `$t(\`${valueStr}\`)`)]
         }
       })
     },
+    TemplateLiteral(node: VAST.ESLintTemplateLiteral) {
+      if (isParent$tCall(node)) {
+        return
+      }
 
-    JSXText(node: JSXText) {
-      checkText(context, node, config, null, 'jsx')
+      const value = getTemplateLiteralValueAndInterpolation(context, node).value
+      if (testValue(value, config)) {
+        return
+      }
+      const valueStr = String(value).trim()
+
+      const loc = calculateLoc(node, null, context)
+      context.report({
+        loc,
+        message: `raw text '${valueStr}' is used`,
+        fix: fixer => {
+          const literalRange = calculateRange(node, null)
+          const { interpolation } = getTemplateLiteralValueAndInterpolation(
+            context,
+            node
+          )
+          return [
+            fixer.replaceTextRange(
+              literalRange,
+              `$t(\`${valueStr}\`, ${interpolation})`
+            )
+          ]
+        }
+      })
     }
   })
 }

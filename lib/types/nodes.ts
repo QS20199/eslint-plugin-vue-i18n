@@ -6,3 +6,15 @@ export interface JSXText extends MaybeNode {
   raw: string
   parent: MaybeNode
 }
+
+export interface JSXElement extends MaybeNode {
+  type: 'JSXElement'
+  value: string
+  parent: MaybeNode
+  children: (JSXText | JSXElement)[]
+  openingElement: {
+    name: {
+      name: string
+    }
+  }
+}
