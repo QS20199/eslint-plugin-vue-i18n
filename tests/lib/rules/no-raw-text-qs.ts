@@ -201,6 +201,21 @@ tester.run('no-raw-text-qs', rule as never, {
         }
       ],
       output: `<template><i18n path="文本1 {0} {1} 文本4" tag="div"><div>文本2</div><div>文本3</div></i18n></template>`
+    },
+    {
+      code: `<script>const a = '文本1';$tips('文本2');$tips({ msg: '文本3' });</script>`,
+      errors: [
+        {
+          message: `raw text '文本1' is used`
+        },
+        {
+          message: `raw text '文本2' is used`
+        },
+        {
+          message: `raw text '文本3' is used`
+        }
+      ],
+      output: `<script>const a = $t('文本1');$tips($t('文本2'));$tips({ msg: $t('文本3') });</script>`
     }
   ]
 })
