@@ -194,6 +194,11 @@ tester.run('no-raw-text-qs', rule as never, {
     },
     {
       code: `<template><div>用户{{ var1 }}进行了<span>{{ var2 }}</span>操作</div></template>`,
+      options: [
+        {
+          allowFixComplicatedTextElement: true
+        }
+      ],
       errors: [
         {
           message: `raw text '用户%{slot0}进行了%{slot1}操作' is used`,
@@ -209,6 +214,11 @@ tester.run('no-raw-text-qs', rule as never, {
               <div>文本3</div>
               文本4
             </div></template>`,
+      options: [
+        {
+          allowFixComplicatedTextElement: true
+        }
+      ],
       errors: [
         {
           message: `raw text '文本1 %{slot0} %{slot1} 文本4' is used`
@@ -280,6 +290,11 @@ tester.run('no-raw-text-qs', rule as never, {
           <div>文本3</div>
           文本4
         </div> })</script>`,
+      options: [
+        {
+          allowFixComplicatedTextElement: true
+        }
+      ],
       errors: [
         {
           message: `raw text '文本1 %{slot0} %{slot1} 文本4' is used`

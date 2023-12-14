@@ -42,6 +42,11 @@ type Config = {
   ignorePattern: RegExp
   ignoreNodes: string[]
   ignoreText: string[]
+
+  // 配置对于复杂文本节点(同时包含{{xxx}}和子html元素的节点), 是否要启用自动修复
+  // 这一类节点如果自动修复为i18n节点后, 可能会过于冗长
+  // 建议是先关闭该选项, 然后人工对复杂节点进行一轮优化(如对某些文字用span包裹)后, 再启用自动修复
+  allowFixComplicatedTextElement: boolean
 }
 type Quotes = Set<'"' | "'" | '`'>
 function getFixQuote(quotes: Quotes, code: string) {
@@ -420,11 +425,13 @@ function checkComplicatedTextElement(
       ) {
         const key = `slot${slotIdx++}`
         if (hasSubElement) {
-          interpolationElements.push(
-            `<template slot="${key}">${context
-              .getSourceCode()
-              .getText(subNode)}</template>`
-          )
+          if (config.allowFixComplicatedTextElement) {
+            interpolationElements.push(
+              `<template slot="${key}">${context
+                .getSourceCode()
+                .getText(subNode)}</template>`
+            )
+          }
         } else {
           interpolationValues.push(
             `${key}: ${context.getSourceCode().getText(subNode.expression)}`
@@ -461,7 +468,8 @@ function checkComplicatedTextElement(
         const result = `${before} $t(\`${nodeDesc}\`, ${interpolationStr}) ${after}`
         return fixer.replaceTextRange(subNodesRange, result)
       } else {
-        // 有子组件的场景, 转换为i18n块
+        // 有子组件的场景, 并且配置允许, 则转换为i18n块
+        if (!config.allowFixComplicatedTextElement) return null
         const tagName =
           node.type === 'JSXElement' ? node.openingElement.name.name : node.name
         const result = [
@@ -793,7 +801,8 @@ function create(context: RuleContext): RuleListener {
     attributes: [],
     ignorePattern: /^$/,
     ignoreNodes: [],
-    ignoreText: []
+    ignoreText: [],
+    allowFixComplicatedTextElement: false
   }
 
   if (options.ignorePattern) {
@@ -809,6 +818,9 @@ function create(context: RuleContext): RuleListener {
   }
   if (options.attributes) {
     config.attributes = parseTargetAttrs(options.attributes)
+  }
+  if (options.allowFixComplicatedTextElement) {
+    config.allowFixComplicatedTextElement = true
   }
 
   const templateVisitor = {
