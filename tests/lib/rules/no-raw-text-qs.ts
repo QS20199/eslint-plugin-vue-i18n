@@ -148,11 +148,11 @@ tester.run('no-raw-text-qs', rule as never, {
       ],
       errors: [
         {
-          message: `raw text '测试%{attr0}%{attr1}测试' is used`,
+          message: `raw text '测试%{slot0}%{slot1}测试' is used`,
           line: 1
         }
       ],
-      output: `<template><p :rules="[{required: true, message: $t(\`测试%{attr0}%{attr1}测试\`, { attr0: var1, attr1: var2 + 1 })}]"></p></template>`
+      output: `<template><p :rules="[{required: true, message: $t(\`测试%{slot0}%{slot1}测试\`, { slot0: var1, slot1: var2 + 1 })}]"></p></template>`
     },
     {
       code: `<template><p>测试</p></template>`,
@@ -186,11 +186,21 @@ tester.run('no-raw-text-qs', rule as never, {
       code: `<template><div>测试1{{ var1 }}测试2</div></template>`,
       errors: [
         {
-          message: `raw text '测试1%{attr0}测试2' is used`,
+          message: `raw text '测试1%{slot0}测试2' is used`,
           line: 1
         }
       ],
-      output: `<template><div>{{ $t(\`测试1%{attr0}测试2\`, { attr0: var1 }) }}</div></template>`
+      output: `<template><div>{{ $t(\`测试1%{slot0}测试2\`, { slot0: var1 }) }}</div></template>`
+    },
+    {
+      code: `<template><div>用户{{ var1 }}进行了<span>{{ var2 }}</span>操作</div></template>`,
+      errors: [
+        {
+          message: `raw text '用户%{slot0}进行了%{slot1}操作' is used`,
+          line: 1
+        }
+      ],
+      output: `<template><i18n path="用户%{slot0}进行了%{slot1}操作" tag="div"><template slot="slot0">{{ var1 }}</template><span slot="slot1">{{ var2 }}</span></i18n></template>`
     },
     {
       code: `<template><div>
@@ -201,7 +211,7 @@ tester.run('no-raw-text-qs', rule as never, {
             </div></template>`,
       errors: [
         {
-          message: `raw text '文本1 {0} {1} 文本4' is used`
+          message: `raw text '文本1 %{slot0} %{slot1} 文本4' is used`
         },
         {
           message: `raw text '文本2' is used`
@@ -210,7 +220,7 @@ tester.run('no-raw-text-qs', rule as never, {
           message: `raw text '文本3' is used`
         }
       ],
-      output: `<template><i18n path="文本1 {0} {1} 文本4" tag="div"><div>文本2</div><div>文本3</div></i18n></template>`
+      output: `<template><i18n path="文本1 %{slot0} %{slot1} 文本4" tag="div"><div slot="slot0">文本2</div><div slot="slot1">文本3</div></i18n></template>`
     },
     {
       code: `<script>const a = '文本1';$tips('文本2');$tips({ msg: '文本3' });</script>`,
@@ -231,16 +241,16 @@ tester.run('no-raw-text-qs', rule as never, {
       code: `<script>const a = \`文本1\${var1}\`;$tips(\`文本2\${var1}\`);$tips({ msg: \`文本3\${var1}\` });</script>`,
       errors: [
         {
-          message: `raw text '文本1%{attr0}' is used`
+          message: `raw text '文本1%{slot0}' is used`
         },
         {
-          message: `raw text '文本2%{attr0}' is used`
+          message: `raw text '文本2%{slot0}' is used`
         },
         {
-          message: `raw text '文本3%{attr0}' is used`
+          message: `raw text '文本3%{slot0}' is used`
         }
       ],
-      output: `<script>const a = $t(\`文本1%{attr0}\`, { attr0: var1 });$tips($t(\`文本2%{attr0}\`, { attr0: var1 }));$tips({ msg: $t(\`文本3%{attr0}\`, { attr0: var1 }) });</script>`
+      output: `<script>const a = $t(\`文本1%{slot0}\`, { slot0: var1 });$tips($t(\`文本2%{slot0}\`, { slot0: var1 }));$tips({ msg: $t(\`文本3%{slot0}\`, { slot0: var1 }) });</script>`
     },
     {
       code: `<script>$tips({ content: <div>测试</div> })</script>`,
@@ -260,7 +270,7 @@ tester.run('no-raw-text-qs', rule as never, {
         </div> })</script>`,
       errors: [
         {
-          message: `raw text '文本1 {0} {1} 文本4' is used`
+          message: `raw text '文本1 %{slot0} %{slot1} 文本4' is used`
         },
         {
           message: `raw text '文本2' is used`
@@ -269,17 +279,17 @@ tester.run('no-raw-text-qs', rule as never, {
           message: `raw text '文本3' is used`
         }
       ],
-      output: `<script>$tips({ content: <i18n path="文本1 {0} {1} 文本4" tag="div"><div>文本2</div><div>文本3</div></i18n> })</script>`
+      output: `<script>$tips({ content: <i18n path="文本1 %{slot0} %{slot1} 文本4" tag="div"><div slot="slot0">文本2</div><div slot="slot1">文本3</div></i18n> })</script>`
     },
     {
       code: `<script>$tips({ content: <div>测试1{var1}测试2</div> })</script>`,
       errors: [
         {
-          message: `raw text '测试1%{attr0}测试2' is used`,
+          message: `raw text '测试1%{slot0}测试2' is used`,
           line: 1
         }
       ],
-      output: `<script>$tips({ content: <div>{ $t(\`测试1%{attr0}测试2\`, { attr0: var1 }) }</div> })</script>`
+      output: `<script>$tips({ content: <div>{ $t(\`测试1%{slot0}测试2\`, { slot0: var1 }) }</div> })</script>`
     }
   ]
 })

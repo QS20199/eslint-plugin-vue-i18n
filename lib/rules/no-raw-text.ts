@@ -377,9 +377,12 @@ function checkComplicatedTextElement(
     return
   }
 
-  let compIdx = 0
-  let attrIdx = 0
-  const interpolation: string[] = []
+  let slotIdx = 0
+  const hasSubElement = node.children.some(
+    subNode => subNode.type === 'VElement' || subNode.type === 'JSXElement'
+  )
+  const interpolationValues: string[] = []
+  const interpolationElements: string[] = []
   const nodeDesc = node.children
     .map((subNode, nodeIdx) => {
       if (subNode.type === 'JSXText' || subNode.type === 'VText') {
@@ -397,18 +400,35 @@ function checkComplicatedTextElement(
         }
         return nodeValue
       }
+
       if (subNode.type === 'VElement' || subNode.type === 'JSXElement') {
-        return `{${compIdx++}}`
+        const key = `slot${slotIdx++}`
+        interpolationElements.push(
+          // 给子组件添加slot属性
+          `${context
+            .getSourceCode()
+            .getText(subNode)
+            .replace(/^(\S+?)(\s|>)/, `$1 slot="${key}"$2`)}`
+        )
+        return `%{${key}}`
       }
       if (
         (subNode.type === 'VExpressionContainer' ||
           subNode.type === 'JSXExpressionContainer') &&
         subNode.expression
       ) {
-        const key = `attr${attrIdx++}`
-        interpolation.push(
-          `${key}: ${context.getSourceCode().getText(subNode.expression)}`
-        )
+        const key = `slot${slotIdx++}`
+        if (hasSubElement) {
+          interpolationElements.push(
+            `<template slot="${key}">${context
+              .getSourceCode()
+              .getText(subNode)}</template>`
+          )
+        } else {
+          interpolationValues.push(
+            `${key}: ${context.getSourceCode().getText(subNode.expression)}`
+          )
+        }
         return `%{${key}}`
       }
     })
@@ -424,7 +444,7 @@ function checkComplicatedTextElement(
   }
 
   context.report({
-    loc: compIdx > 0 ? node.loc : subNodesLoc,
+    loc: hasSubElement ? node.loc : subNodesLoc,
     message: `raw text '${nodeDesc}' is used`,
     fix: fixer => {
       if (scope === 'template-option') {
@@ -432,28 +452,23 @@ function checkComplicatedTextElement(
           return null
         }
       }
-      if (compIdx > 0 && attrIdx === 0) {
-        const tagName =
-          node.type === 'JSXElement' ? node.openingElement.name.name : node.name
-        const result = [
-          `<i18n path="${nodeDesc}" tag="${tagName}">`,
-          ...node.children
-            .filter(
-              subNode =>
-                subNode.type === 'VElement' || subNode.type === 'JSXElement'
-            )
-            .map(subNode => context.getSourceCode().getText(subNode)),
-          `</i18n>`
-        ].join('')
-        return fixer.replaceTextRange(node.range, result)
-      } else if (attrIdx > 0 && compIdx === 0) {
-        const interpolationStr = `{ ${interpolation.join(', ')} }`
+      if (!hasSubElement) {
+        // 没有子组件的场景, 转换为$t('...', {slot0: '...'})
+        const interpolationStr = `{ ${interpolationValues.join(', ')} }`
         const before = scope === 'jsx' ? '{' : '{{'
         const after = scope === 'jsx' ? '}' : '}}'
         const result = `${before} $t(\`${nodeDesc}\`, ${interpolationStr}) ${after}`
         return fixer.replaceTextRange(subNodesRange, result)
       } else {
-        return null // vue-i18n 不支持同时有文本插值和组件插值的场景
+        // 有子组件的场景, 转换为i18n块
+        const tagName =
+          node.type === 'JSXElement' ? node.openingElement.name.name : node.name
+        const result = [
+          `<i18n path="${nodeDesc}" tag="${tagName}">`,
+          ...interpolationElements,
+          `</i18n>`
+        ].join('')
+        return fixer.replaceTextRange(node.range, result)
       }
     }
   })
@@ -738,7 +753,7 @@ function parseTargetAttrs(
 }
 
 /**
- * `测试${var1}测试` -> $t(`测试%{attr0}测试`, {attr0: var1})
+ * `测试${var1}测试` -> $t(`测试%{slot0}测试`, {slot0: var1})
  */
 function getTemplateLiteralValueAndInterpolation(
   context: RuleContext,
@@ -757,7 +772,7 @@ function getTemplateLiteralValueAndInterpolation(
       if (item.type === 'TemplateElement') {
         return item.value.raw
       } else {
-        const key = `attr${idx++}`
+        const key = `slot${idx++}`
         interpolation.push(`${key}: ${context.getSourceCode().getText(item)}`)
         return `%{${key}}`
       }
