@@ -31,6 +31,7 @@ import type {
 import { isKebabCase, pascalCase } from '../utils/casing'
 import { createRule } from '../utils/rule'
 import { toRegExp } from '../utils/regexp'
+import { VText } from 'vue-eslint-parser/ast'
 
 type LiteralValue = VAST.ESLintLiteral['value']
 type TemplateOptionValueNode = StaticLiteral
@@ -811,7 +812,7 @@ function create(context: RuleContext): RuleListener {
   }
 
   const templateVisitor = {
-    // template block
+    // :attr="xxx" or <div>{{...}}</div>
     VExpressionContainer(
       node: VAST.VExpressionContainer,
       baseNode: TemplateOptionValueNode | null = null,
@@ -820,6 +821,7 @@ function create(context: RuleContext): RuleListener {
       checkVExpressionContainer(context, node, config, baseNode, scope)
     },
 
+    // attr="xxx"
     VAttribute(
       node: VAST.VAttribute,
       baseNode: TemplateOptionValueNode | null = null,
@@ -853,13 +855,27 @@ function create(context: RuleContext): RuleListener {
         checkText(context, node.children[0], config, baseNode, scope)
       }
 
-      // handle text element with other element
-      // e.g <div>text<span>text2</span></div>
       if (
         node.children.length > 1 &&
         node.children.some(v => v.type === 'VText')
       ) {
-        checkComplicatedTextElement(context, node, config, baseNode, scope)
+        // handle pure text with <br>
+        if (
+          node.children.every(
+            v =>
+              v.type === 'VText' || (v.type === 'VElement' && v.name === 'br')
+          )
+        ) {
+          node.children
+            .filter(v => v.type === 'VText')
+            .forEach(v =>
+              checkText(context, v as VAST.VText, config, baseNode, scope)
+            )
+        } else {
+          // handle text element with other element
+          // e.g <div>text<span>text2</span></div>
+          checkComplicatedTextElement(context, node, config, baseNode, scope)
+        }
       }
     }
   }

@@ -223,6 +223,18 @@ tester.run('no-raw-text-qs', rule as never, {
       output: `<template><i18n path="文本1 %{slot0} %{slot1} 文本4" tag="div"><div slot="slot0">文本2</div><div slot="slot1">文本3</div></i18n></template>`
     },
     {
+      code: `<template><div>文本1<br />文本2</div></template>`,
+      errors: [
+        {
+          message: `raw text '文本1' is used`
+        },
+        {
+          message: `raw text '文本2' is used`
+        }
+      ],
+      output: `<template><div>{{ $t(\`文本1\`) }}<br />{{ $t(\`文本2\`) }}</div></template>`
+    },
+    {
       code: `<script>const a = '文本1';$tips('文本2');$tips({ msg: '文本3' });</script>`,
       errors: [
         {
