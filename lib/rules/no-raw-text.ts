@@ -315,7 +315,9 @@ function checkVAttribute(
                 return [
                   fixer.replaceTextRange(
                     literalRange,
-                    `$t(\`${valueStr}\`, ${interpolation})`
+                    interpolation
+                      ? `$t(\`${valueStr}\`, ${interpolation})`
+                      : `$t(\`${valueStr}\`)`
                   )
                 ]
               }
@@ -769,7 +771,7 @@ function getTemplateLiteralValueAndInterpolation(
   node: VAST.ESLintTemplateLiteral
 ): {
   value: VAST.ESLintLiteral['value']
-  interpolation: string
+  interpolation: string | null
 } {
   const items = [...node.expressions, ...node.quasis].sort(
     (n1, n2) => n1.range[0] - n2.range[0]
@@ -790,7 +792,9 @@ function getTemplateLiteralValueAndInterpolation(
 
   return {
     value,
-    interpolation: `{ ${interpolation.join(', ')} }`
+    interpolation: interpolation.length
+      ? `{ ${interpolation.join(', ')} }`
+      : null
   }
 }
 
@@ -965,7 +969,9 @@ function create(context: RuleContext): RuleListener {
           return [
             fixer.replaceTextRange(
               literalRange,
-              `$t(\`${valueStr}\`, ${interpolation})`
+              interpolation
+                ? `$t(\`${valueStr}\`, ${interpolation})`
+                : `$t(\`${valueStr}\`)`
             )
           ]
         }

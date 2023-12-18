@@ -245,7 +245,7 @@ tester.run('no-raw-text-qs', rule as never, {
       output: `<template><div>{{ $t(\`文本1\`) }}<br />{{ $t(\`文本2\`) }}</div></template>`
     },
     {
-      code: `<script>const a = '文本1';$tips('文本2');$tips({ msg: '文本3' });</script>`,
+      code: `<script>const a = '文本1';$tips('文本2');$tips({ msg: '文本3' });const b = \`文本4\`;</script>`,
       errors: [
         {
           message: `raw text '文本1' is used`
@@ -255,9 +255,12 @@ tester.run('no-raw-text-qs', rule as never, {
         },
         {
           message: `raw text '文本3' is used`
+        },
+        {
+          message: `raw text '文本4' is used`
         }
       ],
-      output: `<script>const a = $t(\`文本1\`);$tips($t(\`文本2\`));$tips({ msg: $t(\`文本3\`) });</script>`
+      output: `<script>const a = $t(\`文本1\`);$tips($t(\`文本2\`));$tips({ msg: $t(\`文本3\`) });const b = $t(\`文本4\`);</script>`
     },
     {
       code: `<script>const a = \`文本1\${var1}\`;$tips(\`文本2\${var1}\`);$tips({ msg: \`文本3\${var1}\` });</script>`,
