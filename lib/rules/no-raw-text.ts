@@ -233,11 +233,14 @@ function checkLiteral(
     return
   }
 
-  if (
-    literal.parent &&
-    ['Property', 'ImportDeclaration'].includes(literal.parent.type)
-  ) {
-    return
+  if (literal.parent) {
+    if (literal.parent.type === 'ImportDeclaration') {
+      return
+    }
+    if (literal.parent.type === 'Property' && literal.parent.key === literal) {
+      // 对象的key无需检测
+      return
+    }
   }
 
   const value = getStaticLiteralValue(literal)
@@ -935,11 +938,14 @@ function create(context: RuleContext): RuleListener {
         return
       }
 
-      if (
-        node.parent &&
-        ['Property', 'ImportDeclaration'].includes(node.parent.type)
-      ) {
-        return
+      if (node.parent) {
+        if (node.parent.type === 'ImportDeclaration') {
+          return
+        }
+        if (node.parent.type === 'Property' && node.parent.key === node) {
+          // 对象的key无需检测
+          return
+        }
       }
 
       const value = getStaticLiteralValue(node)
@@ -968,8 +974,11 @@ function create(context: RuleContext): RuleListener {
         return
       }
 
-      if (node.parent && node.parent.type === 'Property') {
-        return
+      if (node.parent) {
+        if (node.parent.type === 'Property' && node.parent.key === node) {
+          // 对象的key无需检测
+          return
+        }
       }
 
       const value = getTemplateLiteralValueAndInterpolation(context, node).value
