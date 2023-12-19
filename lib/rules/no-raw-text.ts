@@ -955,7 +955,11 @@ function create(context: RuleContext): RuleListener {
         fix: fixer => {
           const literalRange = calculateRange(node, null)
           const contentRange = [literalRange[0], literalRange[1]] as Range
-          return [fixer.replaceTextRange(contentRange, `$t(\`${valueStr}\`)`)]
+          let result = `$t(\`${valueStr}\`)`
+          if (node.parent && (node.parent.type as any) === 'JSXAttribute') {
+            result = `{${result}}`
+          }
+          return [fixer.replaceTextRange(contentRange, result)]
         }
       })
     },

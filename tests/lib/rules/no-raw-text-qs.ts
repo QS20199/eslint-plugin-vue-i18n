@@ -297,6 +297,22 @@ tester.run('no-raw-text-qs', rule as never, {
       output: `<script>$tips({ content: <div>{ $t(\`测试\`) }</div> })</script>`
     },
     {
+      code: `<script>$tips({ content: <div label="测试"></div> })</script>`,
+      options: [
+        {
+          attributes: {
+            '/.+/': ['label']
+          }
+        }
+      ],
+      errors: [
+        {
+          message: `raw text '测试' is used`
+        }
+      ],
+      output: `<script>$tips({ content: <div label={$t(\`测试\`)}></div> })</script>`
+    },
+    {
       code: `<script>$tips({ content: <div>
           文本1
           <div>文本2</div>
