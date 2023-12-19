@@ -233,6 +233,13 @@ function checkLiteral(
     return
   }
 
+  if (
+    literal.parent &&
+    ['Property', 'ImportDeclaration'].includes(literal.parent.type)
+  ) {
+    return
+  }
+
   const value = getStaticLiteralValue(literal)
 
   if (testValue(value, config)) {
@@ -928,6 +935,13 @@ function create(context: RuleContext): RuleListener {
         return
       }
 
+      if (
+        node.parent &&
+        ['Property', 'ImportDeclaration'].includes(node.parent.type)
+      ) {
+        return
+      }
+
       const value = getStaticLiteralValue(node)
       if (testValue(value, config)) {
         return
@@ -947,6 +961,10 @@ function create(context: RuleContext): RuleListener {
     },
     TemplateLiteral(node: VAST.ESLintTemplateLiteral) {
       if (isParent$tCall(node)) {
+        return
+      }
+
+      if (node.parent && node.parent.type === 'Property') {
         return
       }
 
