@@ -22,7 +22,6 @@ import type {
   RuleFixer,
   Variable,
   RuleListener,
-  SuggestionReportDescriptor,
   Fix,
   I18nLocaleMessageDictionary,
   Range,
@@ -31,7 +30,6 @@ import type {
 import { isKebabCase, pascalCase } from '../utils/casing'
 import { createRule } from '../utils/rule'
 import { toRegExp } from '../utils/regexp'
-import { VText } from 'vue-eslint-parser/ast'
 
 type LiteralValue = VAST.ESLintLiteral['value']
 type TemplateOptionValueNode = StaticLiteral
@@ -214,16 +212,14 @@ function checkExpressionContainerText(
   baseNode: TemplateOptionValueNode | null,
   scope: NodeScope
 ) {
-  if (isStaticLiteral(expression)) {
-    checkLiteral(context, expression, config, baseNode, scope)
-  } else if (expression.type === 'ConditionalExpression') {
-    // handle `bool ? 'xxx1' : 'xxx2'`
-    // or: `bool1 ? 'xxx1' : bool2 ? 'xxx2' : 'xxx3'`
-    const targets = [expression.consequent, expression.alternate]
-    targets.forEach(target => {
-      checkExpressionContainerText(context, target, config, baseNode, scope)
-    })
-  }
+  VAST.traverseNodes(expression, {
+    enterNode(node) {
+      if (isStaticLiteral(node)) {
+        checkLiteral(context, node, config, baseNode, scope)
+      }
+    },
+    leaveNode(node, parent) {}
+  })
 }
 
 function checkLiteral(
@@ -233,6 +229,10 @@ function checkLiteral(
   baseNode: TemplateOptionValueNode | null,
   scope: NodeScope
 ) {
+  if (isParent$tCall(literal)) {
+    return
+  }
+
   const value = getStaticLiteralValue(literal)
 
   if (testValue(value, config)) {
@@ -803,7 +803,7 @@ function create(context: RuleContext): RuleListener {
 
   const config: Config = {
     attributes: [],
-    ignorePattern: /^$/,
+    ignorePattern: /^([^\u4e00-\u9fa5])+$/, // 排除不是中文的字符
     ignoreNodes: [],
     ignoreText: [],
     allowFixComplicatedTextElement: false

@@ -165,6 +165,16 @@ tester.run('no-raw-text-qs', rule as never, {
       output: `<template><p>{{ $t(\`测试\`) }}</p></template>`
     },
     {
+      code: `<template><p>{{ { a: { b: '测试' } }['a']['b'] }}</p></template>`,
+      errors: [
+        {
+          message: `raw text '测试' is used`,
+          line: 1
+        }
+      ],
+      output: `<template><p>{{ { a: { b: $t('测试') } }['a']['b'] }}</p></template>`
+    },
+    {
       code: `<template><div>{{ true ? '测试1' : true ? '测试2' : '测试3' }}</div></template>`,
       errors: [
         {
