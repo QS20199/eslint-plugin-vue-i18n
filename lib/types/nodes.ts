@@ -1,4 +1,5 @@
-import type { MaybeNode } from './eslint'
+import { VStartTag } from 'vue-eslint-parser/ast'
+import { MaybeNode } from './eslint'
 
 export interface JSXText extends MaybeNode {
   type: 'JSXText'
@@ -23,4 +24,5 @@ export interface JSXElement extends MaybeNode {
       name: string
     }
   }
+  startTag: VStartTag
 }

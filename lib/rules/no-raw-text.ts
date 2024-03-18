@@ -484,8 +484,15 @@ function checkComplicatedTextElement(
         if (!config.allowFixComplicatedTextElement) return null
         const tagName =
           node.type === 'JSXElement' ? node.openingElement.name.name : node.name
+        const attrs = [
+          ...node.startTag.attributes.map(v =>
+            context.getSourceCode().getText(v)
+          ),
+          `path="${nodeDesc}"`,
+          `tag="${tagName}"`
+        ]
         const result = [
-          `<i18n path="${nodeDesc}" tag="${tagName}">`,
+          `<i18n ${attrs.join(' ')}>`,
           ...interpolationElements,
           `</i18n>`
         ].join('')
