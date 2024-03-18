@@ -491,8 +491,9 @@ function checkComplicatedTextElement(
         const attrs = [
           ...nodeAttributes.map(v => context.getSourceCode().getText(v)),
           `path="${nodeDesc}"`,
-          `tag="${tagName}"`
-        ]
+          // template元素经过i18n转换后, 不会被vue识别为template模版(而是真的构造成template元素), 因此这里不转换template的tag
+          tagName !== 'template' ? `tag="${tagName}"` : null
+        ].filter(Boolean)
         const result = [
           `<i18n ${attrs.join(' ')}>`,
           ...interpolationElements,
