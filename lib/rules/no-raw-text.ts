@@ -484,10 +484,12 @@ function checkComplicatedTextElement(
         if (!config.allowFixComplicatedTextElement) return null
         const tagName =
           node.type === 'JSXElement' ? node.openingElement.name.name : node.name
+        const nodeAttributes =
+          node.type === 'JSXElement'
+            ? node.openingElement.attributes
+            : node.startTag.attributes
         const attrs = [
-          ...node.startTag.attributes.map(v =>
-            context.getSourceCode().getText(v)
-          ),
+          ...nodeAttributes.map(v => context.getSourceCode().getText(v)),
           `path="${nodeDesc}"`,
           `tag="${tagName}"`
         ]
