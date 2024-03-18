@@ -1,3 +1,10 @@
+# ADD BY qsqiu
+
+对 `no-raw-text` 规则进行了定制, 详见 no-raw-text.ts 的修改 commit
+针对修改后的规则, 增加了对应的测试用例`no-raw-text-qs.ts`, 测试启动方式已集成至`.vscode/launch.json`中
+
+---
+
 <p align="center"><img width="143px" height="130px" src="./assets/eslint-plugin-vue-i18n.svg" alt="ESLint plugin for Vue I18n logo"></p>
 
 <h1 align="center">@intlify/eslint-plugin-vue-i18n</h1>
