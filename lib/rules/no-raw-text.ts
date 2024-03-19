@@ -354,7 +354,8 @@ function checkText(
   baseNode: TemplateOptionValueNode | null,
   scope: NodeScope
 ) {
-  const value = textNode.value.trim()
+  // 模拟html空格类字符表现: 多于1个字符的空格, 始终表现为1个空格, 首尾除外
+  const value = textNode.value.trim().replace(/\s{2,}/g, ' ')
   if (testValue(value, config)) {
     return
   }

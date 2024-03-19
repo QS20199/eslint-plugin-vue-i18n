@@ -165,6 +165,17 @@ tester.run('no-raw-text-qs', rule as never, {
       output: `<template><p>{{ $t(\`测试\`) }}</p></template>`
     },
     {
+      code: `<template><p>测试
+      换行了</p></template>`,
+      errors: [
+        {
+          message: `raw text '测试 换行了' is used`,
+          line: 1
+        }
+      ],
+      output: `<template><p>{{ $t(\`测试 换行了\`) }}</p></template>`
+    },
+    {
       code: `<template><p>{{ { a: { b: '测试' } }['a']['b'] }}</p></template>`,
       errors: [
         {
@@ -216,6 +227,23 @@ tester.run('no-raw-text-qs', rule as never, {
         }
       ],
       output: `<template><i18n path="用户%{slot0}进行了%{slot1}操作" tag="div"><template slot="slot0">{{ var1 }}</template><span slot="slot1">{{ var2 }}</span></i18n></template>`
+    },
+    {
+      code: `<template><div>用户
+      {{ var1 }}
+      进行了<span>{{ var2 }}</span>操作</div></template>`,
+      options: [
+        {
+          allowFixComplicatedTextElement: true
+        }
+      ],
+      errors: [
+        {
+          message: `raw text '用户 %{slot0} 进行了%{slot1}操作' is used`,
+          line: 1
+        }
+      ],
+      output: `<template><i18n path="用户 %{slot0} 进行了%{slot1}操作" tag="div"><template slot="slot0">{{ var1 }}</template><span slot="slot1">{{ var2 }}</span></i18n></template>`
     },
     {
       code: `<template><div v-if="var1" data-a="var2" :data-attr="var3">用户{{ var4 }}进行了<span>{{ var5 }}</span>操作</div></template>`,
